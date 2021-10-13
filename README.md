@@ -1,2 +1,2 @@
 # TwoMediators
-Here I am uploading the codes I have been working with on reconstruction of two mediators. 
+Here I am uploading the codes I have been working on for reconstruction of two mediators. 
