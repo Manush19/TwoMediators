@@ -8,7 +8,8 @@ import scipy as sp
 
 #sigma has to be entered in the same unit as the recoil energy (i.g. keV)
 def gaussian(sigma,E,E_prime):
-    return (1/(sigma*np.sqrt(2*np.pi)))*np.exp(-0.5*((E-E_prime)/sigma)**2)
+    #return (1/(sigma*np.sqrt(2*np.pi)))*np.exp(-0.5*((E-E_prime)/sigma)**2)
+    return np.exp(-0.5*((E-E_prime)/sigma)**2)/(sigma*np.sqrt(2*np.pi))
 
 def convolve(sigma,E,E_prime,rate):
     """ Convolution of a certain recoil rate with a Gaussian energy resolution
