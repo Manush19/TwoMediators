@@ -128,9 +128,11 @@ def lbisection(function, func_args, minx, maxx, **kwargs):
     success = False
     x0 = minx
     x2 = maxx
+    #print (minx,maxx,'lbisection')
     while count < maxiter:
-        x1 = np.sqrt(x0*x2) # (x2-x0)/2+x0 #
+        x1 = (x0+x2)/2.#np.sqrt(x0*x2) #(x2-x0)/2+x0 #  #
         f1 = function(x1,*func_args)
+       # print (x1,f1)
         if f1 == 0:
             if x1 <= sep*x0:
                 success = True
