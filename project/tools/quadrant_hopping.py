@@ -75,14 +75,14 @@ def zerothstep(function, func_args, guess0, varkey, negative):
             if varkey[1] == "e":
                 ng = np.random.exponential(0.5)
             elif varkey[1] == "u":
-                ng = np.random.uniform(1,10)
+                ng = np.random.uniform(1,20)
             guess0 = np.concatenate((guess0,[ng]))
         else:
             for var in varkey:
                 if var[1] == "e":
                     ng = np.random.exponential(0.5)
                 elif var[1] == "u":
-                    ng = np.random.uniform(1,10)
+                    ng = np.random.uniform(1,20)
                 guess0 = np.concatenate((guess0,[ng]))
         guess0 = guess0[1:]
         count +=1
@@ -103,14 +103,14 @@ def firstquadstep(function, func_args, varkey, fun0):
             if varkey[1] == "e":
                 ng = np.random.exponential(0.5)
             elif varkey[1] == "u":
-                ng = np.random.uniform(1,10)
+                ng = np.random.uniform(1,20)
             nextguess = np.concatenate((nextguess,[ng]))
         else:
             for var in varkey:
                 if var[1] == "e":
                     ng = np.random.exponential(0.5)
                 elif var[1] == "u":
-                    ng = np.random.uniform(1,10)
+                    ng = np.random.uniform(1,20)
                 nextguess = np.concatenate((nextguess,[ng]))
         nextguess = nextguess[1:]
         xguess = function(nextguess,*func_args)
@@ -132,7 +132,7 @@ def secondquadstep(function, func_args, varkey, fun0):
             if varkey[1] == "e":
                 ng = np.random.exponential(0.5)
             elif varkey[1] == "u":
-                ng = np.random.uniform(1,10)
+                ng = np.random.uniform(1,20)
             if varkey[0] == "n":
                 ng = -ng
             nextguess = np.concatenate((nextguess,[ng]))
@@ -141,7 +141,7 @@ def secondquadstep(function, func_args, varkey, fun0):
                 if var[1] == "e":
                     ng = np.random.exponential(0.5)
                 elif var[1] == "u":
-                    ng = np.random.uniform(1,10)
+                    ng = np.random.uniform(1,20)
                 if var[0] == "n":
                     ng = -ng
                 nextguess = np.concatenate((nextguess,[ng]))

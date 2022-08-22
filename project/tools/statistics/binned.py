@@ -7,6 +7,14 @@ Binned likelihood functions
 
 import numpy as np
 from scipy import optimize
+import sys
+sys.path.append('..')
+sys.path.append('../..')
+sys.path.append('../../..')
+sys.path.append('../../../..')
+sys.path.append('../../../../..')
+import project.quadrantHopping as quadH
+from iminuit import Minuit
 
 
 def binsample(sample,binnum,accuracy):
@@ -150,6 +158,16 @@ def bintbg(target,bsample):
         intbg[i] = target.bgintegral(binnedE[int(i*accuracy):int(i*accuracy+accuracy)])
     return intbg
 
+# EXP-new    
+def bintexpbg(target,bsample,E0,Et):
+	binnedE = bsample['binnedE']
+	accuracy = bsample['accuracy']
+	binnum = bsample['binnum']
+	intbg = np.zeros(binnum)
+	for i in range(binnum):
+		intbg[i] = target.expbgintegral(E0,Et,binnedE[int(i*accuracy):int(i*accuracy+accuracy)])
+	return intbg
+
 
 def bintot(target,m_dm,m_Z_l,g_l,g_heff,b0,b1,b2,bbg,bl):
     """ Returns a 1-dim array, with thehypothized number of events in each energy bin. 
@@ -184,9 +202,138 @@ def bintot(target,m_dm,m_Z_l,g_l,g_heff,b0,b1,b2,bbg,bl):
             bin_tot[i] += bbg[i]*bl
     bin_tot = target.exposure*bin_tot
     return np.array(bin_tot)
+    
+# EXP-new
+def bintotexp(target,m_dm,m_Z_l,g_l,g_heff,b0,b1,b2,bbg,bl,expbbg):
+    """ Returns a 1-dim array, with thehypothized number of events in each energy bin
+    for an exponential background.
+    """
+    bin_tot = np.zeros(np.shape(b0[:,0]))
+    for i in range(0,np.shape(b0)[0]):
+        for j in range(target.nelements): #summing over elements
+            bin_tot[i] += target.prefactor(m_dm,j)*(g_heff**2*b0[i,j]
+                     +2*(g_heff*g_l)*b1[i,j]
+                     +g_l**2*b2[i,j])
+        if target.background != 0:
+            bin_tot[i] += bbg[i]*bl
+        bin_tot[i] += expbbg[i]
+    bin_tot = target.exposure*bin_tot
+    return np.array(bin_tot)
+
+def bintotrho(target,m_dm,m_Z_l,g_l,g_heff,b0,b1,b2,bbg,bl,rh):
+    """ Returns a 1-dim array, with thehypothized number of events in each energy bin
+    including the local dark matter density (rh) as a free parameter.
+    Attributes
+    ----------
+    target : class
+        Namespace (class) of the target used as given by the statistics.target
+        class (see above).
+    m_dm : float
+        DM mass in GeV.
+    m_Z_l : float
+        Light mediator mass in MeV.
+    g_l : float
+        Light mediator coupling (dimensionless).
+    g_heff : float
+        Effective coupling of the heavy mediator in MeV^-2.
+    b0,b1,b2 : arra
+        Array of contributions to the number of energy values as returned by the function
+        bint0, bint1, bint2 in statistics.binned, respectively.
+    bbg : array
+        Array of background contribution in each bin.
+    bl: float
+        Background level, will be profiled over.
+    rh: float
+        local dark matter density. 
+    """
+    bin_tot = np.zeros(np.shape(b0[:,0]))
+    for i in range(0,np.shape(b0)[0]):
+        for j in range(target.nelements): #summing over elements
+            bin_tot[i] += target.prefactor(m_dm,j,rh)*(g_heff**2*b0[i,j]
+                     +2*(g_heff*g_l)*b1[i,j]
+                     +g_l**2*b2[i,j])
+        if target.background != 0:
+            bin_tot[i] += bbg[i]*bl
+    bin_tot = target.exposure*bin_tot
+    return np.array(bin_tot)
 
          
-
+def bintot2(target,m_dm,m_Z_l,g_l,g_heff,b0,b1,b2,bbg,bl,Z = [0,0],theta_l = np.pi/4.,theta_h = np.pi/4.):
+    """ Returns a 1-dim array, with thehypothized number of events in each energy bin. 
+    Attributes
+    ----------
+    target : class
+        Namespace (class) of the target used as given by the statistics.target
+        class (see above).
+    m_dm : float
+        DM mass in GeV.
+    m_Z_l : float
+        Light mediator mass in MeV.
+    g_l : float
+        Light mediator coupling (dimensionless).
+    g_heff : float
+        Effective coupling of the heavy mediator in MeV^-2.
+    b0,b1,b2 : arra
+        Array of contributions to the number of energy values as returned by the function 
+        bint0, bint1, bint2 in statistics.binned, respectively.
+    bbg : array 
+        Array of background contribution in each bin.
+    bl: float
+        Background level, will be profiled over. 
+    """
+    
+    
+    
+    bin_tot = np.zeros(np.shape(b0[:,0]))
+    for i in range(0,np.shape(b0)[0]):
+        for j in range(target.nelements): #summing over elements
+            pH = np.sqrt(2)*(Z[j]*np.cos(theta_h)+(target.A[j]-Z[j])*np.sin(theta_h))/target.A[j]
+            pL = np.sqrt(2)*(Z[j]*np.cos(theta_l)+(target.A[j]-Z[j])*np.sin(theta_l))/target.A[j]
+    		
+            bin_tot[i] += target.prefactor(m_dm,j)*(g_heff**2*b0[i,j]*pH**2
+                     +2*(g_heff*g_l)*b1[i,j]*pH*pL
+                     +g_l**2*b2[i,j])*pL**2
+        if target.background != 0:
+            bin_tot[i] += bbg[i]*bl
+    bin_tot = target.exposure*bin_tot
+    return np.array(bin_tot)
+    
+def bintot3(target,m_dm,m_Z_l,g_l,g_heff,b0,b1,b2,bbg,sl,bl,Z = [0,0],theta_l = np.pi/4.,theta_h = np.pi/4.,E=None):
+    """ Returns a 1-dim array, with thehypothized number of events in each energy bin. 
+    Attributes
+    ----------
+    target : class
+        Namespace (class) of the target used as given by the statistics.target
+        class (see above).
+    m_dm : float
+        DM mass in GeV.
+    m_Z_l : float
+        Light mediator mass in MeV.
+    g_l : float
+        Light mediator coupling (dimensionless).
+    g_heff : float
+        Effective coupling of the heavy mediator in MeV^-2.
+    b0,b1,b2 : arra
+        Array of contributions to the number of energy values as returned by the function 
+        bint0, bint1, bint2 in statistics.binned, respectively.
+    bbg : array 
+        Array of background contribution in each bin.
+    bl: float
+        Background level, will be profiled over. 
+    """
+    bin_tot = np.zeros(np.shape(b0[:,0]))
+    for i in range(0,np.shape(b0)[0]):
+        for j in range(target.nelements): #summing over elements
+            pH = np.sqrt(2)*(Z[j]*np.cos(theta_h)+(target.A[j]-Z[j])*np.sin(theta_h))/target.A[j]
+            pL = np.sqrt(2)*(Z[j]*np.cos(theta_l)+(target.A[j]-Z[j])*np.sin(theta_l))/target.A[j]
+    		
+            bin_tot[i] += target.prefactor(m_dm,j)*(g_heff**2*b0[i,j]*pH**2
+                     +2*(g_heff*g_l)*b1[i,j]*pH*pL
+                     +g_l**2*b2[i,j])*pL**2
+        if target.background != 0:
+            bin_tot[i] += bbg[i]*(sl*E[i]+bl)
+    bin_tot = target.exposure*bin_tot
+    return np.array(bin_tot)    
 
 def llgl(param,bsample,b0,b1,b2,bbg,target,m_dm,m_Z_l,g_heff,g_order):
     """ Returns negative log-likelihood function in g_l and the background level bl
@@ -262,6 +409,8 @@ def llglpos(param,bsample,b0,b1,b2,bbg,target,m_dm,m_Z_l,g_heff,g_order):
     g_l = param[1]*g_order
     if g_l<0:
         ll = float('-inf') 
+    elif bl < 0:
+    	ll = float('-inf')
     else:
         lambd_array = bintot(target,m_dm,m_Z_l,g_l,g_heff,b0,b1,b2,bbg,bl)
         ll =  -np.sum(lambd_array)
@@ -273,7 +422,6 @@ def llglpos(param,bsample,b0,b1,b2,bbg,target,m_dm,m_Z_l,g_heff,g_order):
                 ll = float('-inf') #float('inf') 
                 break
     return -ll
-
 
 def llbl(param,bsample,b0,b1,b2,bbg,target,m_dm,m_Z_l,g_l,g_heff,g_order):
     """ Returns negative log-likelihood function in the background level bl.
@@ -308,6 +456,8 @@ def llbl(param,bsample,b0,b1,b2,bbg,target,m_dm,m_Z_l,g_l,g_heff,g_order):
     bl = param
     if g_l<0:
         ll = float('-inf') 
+    elif bl < 0:
+    	ll = float('-inf')
     else:
         lambd_array = bintot(target,m_dm,m_Z_l,g_l*g_order,g_heff,b0,b1,b2,bbg,bl)
         ll =  -np.sum(lambd_array)
@@ -354,8 +504,10 @@ def ts_excl_gl(g_l,bsample,b0,b1,b2,bbg,target,denom,bestN,testexcl,m_dm,m_Z_l,g
         Estimate of the order of the light mediator coupling, can be calculated with the
         statistics.getglorder() function or guessed. 
     """
+    
     profile = optimize.minimize(llbl,1,args=(bsample,b0,b1,b2,bbg,target,m_dm,m_Z_l,g_l,g_heff,g_order))
     bl = profile.x
+    
     N = np.sum(bintot(target,m_dm,m_Z_l,g_l*g_order,g_heff,b0,b1,b2,0*bbg,bl))
     if bestN>=N:
         res = 0
@@ -365,3 +517,4 @@ def ts_excl_gl(g_l,bsample,b0,b1,b2,bbg,target,denom,bestN,testexcl,m_dm,m_Z_l,g
     if res <= testexcl:
         res = 0
     return res
+

@@ -14,6 +14,7 @@ import project.tools.formfactor as ff
 import project.tools.velocity_int as vi
 from project.constants import atomic, darkmatter, conversion, cosmo
 from project.tools.convolution import convolve
+from project.tools.convolution import gaussian
 from project.tools import magnitude
 
 """Target definition"""
@@ -66,7 +67,7 @@ class target:
         else:
             self.sigma = sigma
             self.res = True
-        # we define a region of interest, if not given
+        # we define a region of interest, if not given            
         if "roi" in kwargs:
             self.roimax = kwargs.get("roi")
         else: 
@@ -89,19 +90,70 @@ class target:
             self.frac.append((self.mass[i]*element[1])/self.totmass)
         return 
     
+    def initialize_vdf(self, **kwargs):
+        """ To initialize the VDF required for velocity integration. 
+        ----------
+        I_index: Integer. Which velocity integration to use. see velocity_int.py
+                 default 0: This represents SHM, Maxwell-Botzmann distribution 
+                 with Vcir = 220 km/s, Vesc = 544 km/s
+                 I_index = 1 if custom vesc and vcir has to be passed to SHM. 
+                 I_index = 2 if custom VDF (and V) has to be passed, custom vesc and vcir also
+                           can be passed here.
+        VDF, V: Velocity distribution function (VDF) at velocity in earth reference frame (V),
+                should be passed iff I_index = 2.
+        vesc: Use this keyword if a different value for local escape velocity from 
+              the default value of 544 has to be passed.
+        vcir: Use this keyword if a different vlaue for the circular speed of local 
+              standard of rest has to be used (default = 220 km/s). 
+        vearth: If the keyword vcir is not used, a custom value for the velocity of
+                earth with respect to the galactic rest frame can be passed.
+        vrms: Similarly, if vcir is not used, a custom value for the vrms velocity 
+              can be passed. Default value is sqrt(3/2)vcir
+        """
+        if 'I_index' in kwargs:
+            self.I_index = kwargs.get('I_index')
+        else:
+            self.I_index = 0
+        if self.I_index == 2:
+            self.VDF = kwargs.get('VDF')
+            self.V = kwargs.get('V')
+            
+        if "vesc" in kwargs:
+            self.vesc = kwargs.get("vesc")
+        else:
+            self.vesc = cosmo.v_esc
+            
+        if 'vcir' in kwargs:
+            self.vcir = kwargs.get('vcir')
+            self.vearth = self.vcir*(1.05 + 0.07)
+            self.vrms = np.sqrt(3./2.)*self.vcir
+        else: 
+            if "vearth" in kwargs:
+                self.vearth = kwargs.get("vearth")
+            else:
+                self.vearth = cosmo.v_earth
+        
+            if "vrms" in kwargs:
+                self.vrms = kwargs.get("vrms")
+            else:
+                self.vrms = cosmo.w
+            
+    
 # the following functions are needed to compute the differential recoil spectrum
 # or any related quantities such as pdfs 
 
-    def prefactor(self,m_dm,index):
+    def prefactor(self,m_dm,index,rh=darkmatter.rho_wimp):
         """ Prefactor before velocity integral in differential event rate.
         ----------
         m_dm : float
             DM mass in GeV.
         index : integer
             Index of the element component in the target mocecule, e.g. 0 for Na in NaI.
-        """ 
-        return (((darkmatter.rho_wimp*self.A[index]**2*9)/(2*np.pi*m_dm))*
+        rh : dark matter local density. Default value is 0.3 GeV/cm^3. 
+        """
+        return (((rh*self.A[index]**2*9)/(2*np.pi*m_dm))*
                     self.frac[index]*conversion.conv_g)
+
     
     def vF(self,m_dm,E,index):
         """ Velocity integral in differential event rate.
@@ -113,8 +165,17 @@ class target:
         index : integer
             Index of the element component in the target mocecule, e.g. 0 for Na in NaI.
         """       
-        return vi.I(vi.v_min(self.mass[index],m_dm,E))*ff.F2(self.A[index],self.mass[index],E)
-
+        if self.I_index == 0:
+            ans = vi.I(vi.v_min(self.mass[index],m_dm,E))*ff.F2(self.A[index],self.mass[index],E)
+        elif self.I_index == 1:
+            ans = vi.I1(vi.v_min(self.mass[index],m_dm,E),vesc = self.vesc, vrms = self.vrms,
+            vearth = self.vearth) * ff.F2(self.A[index], self.mass[index],E)
+        elif self.I_index == 2:
+            ans = vi.I2(self.V, self.VDF, vi.v_min(self.mass[index],m_dm,E), self.vesc, 
+            self.vearth)
+        elif self.I_index == 'AM':
+            ans = vi.AM(vi.v_min(self.mass[index],m_dm,E))*ff.F2(self.A[index],self.mass[index],E)
+        return ans
         
     def mus_N(self,m_dm):
         """ Calculates the reduced DM nucleus mass for smallest nucleus in the target.
@@ -135,7 +196,8 @@ class target:
             DM mass in GeV.
         """ 
         minN = min(self.mass)
-        Emax = (2*self.mus_N(m_dm)**2*(cosmo.v_esc+cosmo.v_earth)**2)/minN 
+        #Emax = (2*self.mus_N(m_dm)**2*(cosmo.v_esc+cosmo.v_earth)**2)/minN 
+        Emax = (2*self.mus_N(m_dm)**2*(self.vesc+self.vearth)**2)/minN
         Emax = (Emax*10**6)/(cosmo.c)**2
         return Emax
     
@@ -221,6 +283,8 @@ class target:
             result = E*self.background[0]+self.background[1]
         else:
             result = np.ones(np.shape(E))*self.background[0]
+        #K_peak = gaussian(self.sigma,E,3.) # a gaussian peak at 3 keV
+        #result += K_peak*result*0.25
         return result
     
 
@@ -257,6 +321,13 @@ class target:
         """ Calculates the integral over the background function for a certain energy array.
         """ 
         return np.trapz(self.bg(E),E)
+    
+    #EXP-new
+    def expbgintegral(self,Exp0,Expt,E):
+    	def expbg(E):
+    		result = Exp0*(np.exp(-(E-self.threshold)/Expt))
+    		return result
+    	return np.trapz(expbg(E),E)
 
 # full differential recoil spectrum:
     def diffrecoil(self,m_dm,m_Z_l,g_l,g_heff,E):
@@ -273,7 +344,7 @@ class target:
         g_heff : float
             Effective coupling of the heavy mediator in MeV^-2
         E : array
-            Energy array in keV.
+            Energy array in keV
         """ 
         dRdE = 0 
         for j in range(0,self.nelements):
@@ -358,7 +429,7 @@ def poisson(x,lambd):
 
 
 
-def mocksample(target,m_dm,m_Z_l,g_l,g_heff):
+def mocksample(target,m_dm,m_Z_l,g_l,g_heff,seed = None):
     """ Inverse cdf mock sample generation, with a DM signal.
         Attributes
     ----------
@@ -388,9 +459,12 @@ def mocksample(target,m_dm,m_Z_l,g_l,g_heff):
     cdf[-1]=cdf[-2]
 
     # draw a random number for the total number of events
-    Ntot_rand = int(np.floor(np.random.poisson(Ntot,1)))
+    #Ntot_rand = int(np.floor(np.random.poisson(Ntot,1)))
+    Ntot_rand = int(Ntot)
     
     # draw the mocksample
+    if seed:
+        np.random.seed(seed)
     Esample = []
     for u in np.random.uniform(0,1,size=Ntot_rand):
         index = (np.abs(cdf-u)).argmin()
@@ -400,7 +474,7 @@ def mocksample(target,m_dm,m_Z_l,g_l,g_heff):
     return {'sample': sample, 'Nrand': Ntot_rand, 'cdf':cdf, 'E':E_array}
 
 
-def bgsample(target):
+def bgsample(target,seed = None):
     """ Inverse cdf mock background sample generation, without a DM signal.
     Attributes
     ----------
@@ -426,9 +500,12 @@ def bgsample(target):
     cdf[-1]=cdf[-2]
 
     # draw a random number for the total number of events
-    Ntot_rand = int(np.floor(np.random.poisson(Ntot,1)))
+    #Ntot_rand = int(np.floor(np.random.poisson(Ntot,1)))
+    Ntot_rand = int(Ntot)
     
     # draw the mocksample
+    if seed:
+        np.random.seed(seed)
     Esample = []
     for u in np.random.uniform(0,1,size=Ntot_rand):
         index = (np.abs(cdf-u)).argmin()
